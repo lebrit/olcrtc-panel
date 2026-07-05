@@ -89,6 +89,8 @@ olcrtc-panel config
 
 Если managed checkout в `/opt/olcrtc-panel` содержит локально изменённые tracked-файлы и `git pull` не может продолжить, update сохраняет patch/status в `data/backups/git-local-changes-*.patch` и приводит checkout к `origin/main`. `.env`, `Caddyfile`, база, логи и backups не удаляются.
 
+После обновления checkout installer перезапускает себя из `/opt/olcrtc-panel/scripts/install.sh`, чтобы Docker image, `.env` и итоговый вывод брали уже актуальную версию, а не старый bootstrap-процесс.
+
 Удаление разделено по scope:
 
 ```bash
@@ -127,7 +129,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.7`.
+Текущая версия: `0.1.8`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -151,3 +153,4 @@ bash -n scripts/install.sh
 - Добавить отдельную кнопку repair-доступа в меню с проверкой HTTP-кода панели после перезапуска Caddy.
 - Добавить авто-предложение пересоздать профиль на ближайшем рабочем Jitsi после ошибки запуска.
 - Добавить отдельную команду `olcrtc-panel doctor`, которая проверяет git checkout, Docker Compose, Caddy route и доступность панели одной диагностикой.
+- Добавить в installer проверку фактической версии контейнера после `docker compose up`, чтобы сразу ловить старый image/tag.
