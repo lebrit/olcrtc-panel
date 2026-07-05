@@ -157,6 +157,16 @@ input, select {
   color: #fff;
 }
 .primaryButton:hover { background: #0b615b; color: #fff; border-color: #0b615b; }
+.dangerButton {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+.dangerButton:hover {
+  border-color: #ef4444;
+  background: #fee2e2;
+  color: #991b1b;
+}
 
 .probeGrid {
   display: grid;
@@ -203,6 +213,13 @@ input, select {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+.userMetaActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .userCard p, .nestedProfile p { margin: 4px 0 0; font-size: 13px; }
 .profileCount {
@@ -334,6 +351,7 @@ input, select {
   .nestedProfile { grid-template-columns: 1fr; }
   .cardActions { max-width: none; justify-content: flex-start; }
   .cardActions button { flex: 1 1 92px; }
+  .userMetaActions { width: 100%; justify-content: flex-start; }
   .roomLine { grid-template-columns: 1fr; }
   .toolButton { width: 100%; }
 }

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Copy, FileText, Link2, LogOut, Play, Plus, RefreshCw, RotateCw, ScrollText, Search, Server, Square } from "lucide-react";
+import { Copy, FileText, Link2, LogOut, Play, Plus, RefreshCw, RotateCw, ScrollText, Search, Server, Square, Trash2 } from "lucide-react";
 import "./styles.css";
 
 type User = { id: number; name: string; enabled: number; note: string };
@@ -50,6 +50,10 @@ function responseError(text: string, fallback: string): string {
     return text;
   }
   return text;
+}
+
+function confirmTyped(message: string, code: string): boolean {
+  return window.prompt(`${message}\nВведите ${code} для подтверждения:`) === code;
 }
 
 function App() {
@@ -163,6 +167,39 @@ function App() {
     }
   }
 
+  async function deleteProfile(profile: Profile) {
+    if (!confirmTyped(`Удалить профиль #${profile.id} (${profile.name || profile.provider})? Пользователь останется.`, `DELETE-PROFILE-${profile.id}`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/profiles/${profile.id}`, { method: "DELETE" });
+      if (selectedProfile === profile.id) {
+        setSelectedProfile(null);
+        setLogs("");
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteUser(user: User) {
+    const count = profilesByUser.get(user.id)?.length || 0;
+    if (!confirmTyped(`Удалить пользователя #${user.id} (${user.name}) и все его профили: ${count}?`, `DELETE-USER-${user.id}`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/users/${user.id}`, { method: "DELETE" });
+      setSelectedProfile(null);
+      setLogs("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadLogs(profileId: number) {
     setSelectedProfile(profileId);
     setLogs(await api<string>(`/api/profiles/${profileId}/logs`));
@@ -264,7 +301,13 @@ function App() {
         {jitsi.length > 0 && (
           <div className="probeGrid">
             {jitsi.map((item) => (
-              <button className={item.ok ? "probe ok" : "probe"} key={item.url} onClick={() => setForm({ ...form, jitsi_server: item.url })}>
+              <button
+                className={item.ok ? "probe ok" : "probe"}
+                disabled={!item.ok || busy}
+                key={item.url}
+                onClick={() => item.ok && setForm({ ...form, jitsi_server: item.url })}
+                title={item.ok ? "Выбрать Jitsi server" : "Этот сервер не подходит для запуска"}
+              >
                 <span className="probeHead"><Server size={16} />{item.url}</span>
                 <span>{item.status} · {item.latency_ms} ms{item.requires_registration ? " · auth" : ""}</span>
               </button>
@@ -291,7 +334,12 @@ function App() {
                       <h3>{user.name}</h3>
                       <p>#{user.id} · {user.enabled ? "enabled" : "disabled"}{user.note ? ` · ${user.note}` : ""}</p>
                     </div>
-                    <span className="profileCount">{userProfiles.length}</span>
+                    <div className="userMetaActions">
+                      <span className="profileCount">{userProfiles.length}</span>
+                      <button className="dangerButton" onClick={() => deleteUser(user)} disabled={busy} title="Удалить пользователя и все его профили">
+                        <Trash2 size={16} />Удалить пользователя
+                      </button>
+                    </div>
                   </div>
                   <div className="nestedProfiles">
                     {userProfiles.map((profile) => (
@@ -320,6 +368,7 @@ function App() {
                           <button onClick={() => copyText("URI скопирован", profile.uri)}><Link2 size={16} />URI</button>
                           <button onClick={() => copyText("Sub скопирован", profile.subscription_url)}><FileText size={16} />Sub</button>
                           <button onClick={() => loadLogs(profile.id)}><ScrollText size={16} />Logs</button>
+                          <button className="dangerButton" onClick={() => deleteProfile(profile)} disabled={busy}><Trash2 size={16} />Удалить</button>
                         </div>
                       </div>
                     ))}

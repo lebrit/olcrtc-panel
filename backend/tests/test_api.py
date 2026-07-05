@@ -58,6 +58,42 @@ def test_create_jitsi_profile_and_subscription(tmp_path, monkeypatch):
     assert "olcrtc://jitsi?datachannel@" in sub.text
 
 
+def test_delete_profile(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    created = client.post(
+        "/api/profiles",
+        json={"user_name": "demo", "provider": "jitsi", "jitsi_server": "https://meet.example.org", "start_now": False},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.delete(f"/api/profiles/{created['id']}", headers=auth_headers())
+    status = client.get("/api/status", headers=auth_headers()).json()
+
+    assert response.status_code == 200
+    assert status["profiles"] == []
+    assert len(status["users"]) == 1
+
+
+def test_delete_user_cascades_profiles_and_subscription(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    created = client.post(
+        "/api/profiles",
+        json={"user_name": "demo", "provider": "jitsi", "jitsi_server": "https://meet.example.org", "start_now": False},
+        headers=auth_headers(),
+    ).json()
+    user_id = created["user_id"]
+    sub_token = created["subscription_url"].split("/sub/", 1)[1]
+
+    response = client.delete(f"/api/users/{user_id}", headers=auth_headers())
+    status = client.get("/api/status", headers=auth_headers()).json()
+    sub = client.get(f"/sub/{sub_token}")
+
+    assert response.status_code == 200
+    assert status["users"] == []
+    assert status["profiles"] == []
+    assert sub.status_code == 404
+
+
 def test_jitsi_discovery_deduplicates_and_sorts(monkeypatch):
     from olcrtc_panel import providers
 

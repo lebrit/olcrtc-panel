@@ -87,7 +87,13 @@ class RunnerManager:
         if code == 0:
             self.store.update_profile_state(profile_id, "stopped", "", "")
         else:
-            self.store.update_profile_state(profile_id, "error", f"olcrtc exited with code {code}", "")
+            tail = self.tail_log(profile_id, limit=4000).strip()
+            lines = [line for line in tail.splitlines() if line.strip()]
+            detail = "\n".join(lines[-10:])
+            message = f"olcrtc exited with code {code}"
+            if detail:
+                message = f"{message}\n{detail}"
+            self.store.update_profile_state(profile_id, "error", message, "")
         return self.store.get_profile(profile_id)
 
     def refresh_all(self) -> None:

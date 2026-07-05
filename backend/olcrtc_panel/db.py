@@ -117,6 +117,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("UPDATE users SET enabled=?, updated_at=? WHERE id=?", (1 if enabled else 0, now(), user_id))
 
+    def delete_user(self, user_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+
     def list_profiles(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -135,6 +139,19 @@ class Store:
                 SELECT p.*, u.name AS user_name
                 FROM profiles p JOIN users u ON u.id = p.user_id
                 WHERE p.user_id=? AND p.enabled=1 AND u.enabled=1
+                ORDER BY p.id ASC
+                """,
+                (user_id,),
+            ).fetchall()
+        return [row_to_dict(row) or {} for row in rows]
+
+    def list_profiles_for_user(self, user_id: int) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT p.*, u.name AS user_name, u.enabled AS user_enabled
+                FROM profiles p JOIN users u ON u.id = p.user_id
+                WHERE p.user_id=?
                 ORDER BY p.id ASC
                 """,
                 (user_id,),

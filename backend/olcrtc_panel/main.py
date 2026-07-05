@@ -130,6 +130,17 @@ def create_app() -> FastAPI:
         store.set_user_enabled(user_id, False)
         return {"status": "ok"}
 
+    @app.delete("/api/users/{user_id}", dependencies=[Depends(require_auth)])
+    def delete_user(user_id: int) -> dict[str, str]:
+        user = store.get_user(user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="user not found")
+        for profile in store.list_profiles_for_user(user_id):
+            runner.stop(int(profile["id"]))
+        store.delete_user(user_id)
+        store.add_event("info", f"user deleted: {user['name']}")
+        return {"status": "ok"}
+
     @app.get("/api/users/{user_id}/subscription", dependencies=[Depends(require_auth)])
     def user_subscription(user_id: int) -> dict[str, Any]:
         user = store.get_user(user_id)
@@ -215,6 +226,8 @@ def create_app() -> FastAPI:
 
     @app.delete("/api/profiles/{profile_id}", dependencies=[Depends(require_auth)])
     def delete_profile(profile_id: int) -> dict[str, str]:
+        if store.get_profile(profile_id) is None:
+            raise HTTPException(status_code=404, detail="profile not found")
         runner.stop(profile_id)
         store.delete_profile(profile_id)
         return {"status": "ok"}
