@@ -87,6 +87,8 @@ olcrtc-panel config
 
 `olcrtc-panel update` также проверяет и чинит доступ к панели: пересобирает `.env` и `Caddyfile` под текущую схему `Caddy -> 127.0.0.1:18080`, сохраняет admin token, делает backup старых файлов и печатает актуальный URL.
 
+Если managed checkout в `/opt/olcrtc-panel` содержит локально изменённые tracked-файлы и `git pull` не может продолжить, update сохраняет patch/status в `data/backups/git-local-changes-*.patch` и приводит checkout к `origin/main`. `.env`, `Caddyfile`, база, логи и backups не удаляются.
+
 Удаление разделено по scope:
 
 ```bash
@@ -125,7 +127,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.6`.
+Текущая версия: `0.1.7`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -148,3 +150,4 @@ bash -n scripts/install.sh
 - Добавить real XMPP join-check для Jitsi, чтобы отсеивать серверы до старта профиля.
 - Добавить отдельную кнопку repair-доступа в меню с проверкой HTTP-кода панели после перезапуска Caddy.
 - Добавить авто-предложение пересоздать профиль на ближайшем рабочем Jitsi после ошибки запуска.
+- Добавить отдельную команду `olcrtc-panel doctor`, которая проверяет git checkout, Docker Compose, Caddy route и доступность панели одной диагностикой.

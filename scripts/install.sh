@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.6"
+PANEL_VERSION="0.1.7"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -246,9 +246,24 @@ maybe_stop_web_conflicts() {
 
 clone_or_update_repo() {
   if [ -d "$APP_DIR/.git" ]; then
+    local stamp backup_dir status_file patch_file
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    backup_dir="$APP_DIR/data/backups"
+    status_file="$backup_dir/git-local-changes-$stamp.status"
+    patch_file="$backup_dir/git-local-changes-$stamp.patch"
+
     git -C "$APP_DIR" fetch --all --tags
-    git -C "$APP_DIR" checkout main
-    git -C "$APP_DIR" pull --ff-only
+    if ! git -C "$APP_DIR" diff --quiet --ignore-submodules -- || ! git -C "$APP_DIR" diff --cached --quiet --ignore-submodules --; then
+      mkdir -p "$backup_dir"
+      git -C "$APP_DIR" status --short > "$status_file" || true
+      {
+        git -C "$APP_DIR" diff --binary -- || true
+        git -C "$APP_DIR" diff --cached --binary -- || true
+      } > "$patch_file"
+      echo "Найдены локальные изменения в managed checkout. Patch сохранён: $patch_file"
+    fi
+    git -C "$APP_DIR" checkout -f -B main origin/main
+    git -C "$APP_DIR" reset --hard origin/main
   else
     rm -rf "$APP_DIR"
     git clone "$REPO_URL" "$APP_DIR"
