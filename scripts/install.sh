@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.11"
+PANEL_VERSION="0.1.12"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -187,7 +187,13 @@ read_prompt() {
 
 read_required() {
   local prompt="$1"
-  read_prompt "$prompt" ""
+  local value
+  value="$(read_prompt "$prompt" "")"
+  if [ -z "$value" ] && ! { [ -r /dev/tty ] && [ -w /dev/tty ]; } && ! [ -t 0 ]; then
+    echo "Нет интерактивного терминала для ввода: $prompt" >&2
+    return 1
+  fi
+  echo "$value"
 }
 
 normalize_path() {
@@ -271,7 +277,10 @@ clone_or_update_repo() {
 }
 
 install_cli_wrapper() {
-  cat > /usr/local/bin/olcrtc-panel <<EOF
+  local wrapper tmp
+  wrapper="/usr/local/bin/olcrtc-panel"
+  tmp="$(mktemp "${wrapper}.tmp.XXXXXX")"
+  cat > "$tmp" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 if [ "\$#" -eq 0 ]; then
@@ -279,7 +288,9 @@ if [ "\$#" -eq 0 ]; then
 fi
 exec bash "$APP_DIR/scripts/install.sh" "\$@"
 EOF
-  chmod 0755 /usr/local/bin/olcrtc-panel
+  chmod 0755 "$tmp"
+  rm -f "$wrapper"
+  mv -f "$tmp" "$wrapper"
 }
 
 write_caddyfile() {
@@ -581,7 +592,7 @@ delete_menu() {
   echo "  3) Удалить локальные backups"
   echo "  4) Полное удаление"
   echo "  0) Назад"
-  choice="$(read_required "Выбор")"
+  choice="$(read_required "Выбор")" || return 0
   case "$choice" in
     1) uninstall_cmd ;;
     2) delete_runtime_cmd ;;
@@ -605,7 +616,10 @@ menu_cmd() {
     echo "  9) Doctor"
     echo "  10) Rescue up"
     echo "  0) Выход"
-    choice="$(read_required "Выбор")"
+    choice="$(read_required "Выбор")" || {
+      echo "Меню требует интерактивный терминал. Для диагностики используй: olcrtc-panel info или olcrtc-panel doctor."
+      exit 0
+    }
     case "$choice" in
       1) status_cmd ;;
       2) info_cmd ;;
