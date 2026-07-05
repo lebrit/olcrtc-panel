@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.9"
+PANEL_VERSION="0.1.10"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -409,18 +409,17 @@ install_cmd() {
 
 update_cmd() {
   need_root
+  echo "Обновляю checkout..."
   clone_or_update_repo
   install_cli_wrapper
-  if [ "${OLCRTC_PANEL_NO_REEXEC:-}" != "1" ]; then
-    echo "Checkout обновлён. Перезапускаю актуальный installer из $APP_DIR."
-    OLCRTC_PANEL_NO_REEXEC=1 exec bash "$APP_DIR/scripts/install.sh" update-apply
-  fi
   update_apply_cmd
 }
 
 update_apply_cmd() {
   need_root
+  echo "Применяю конфигурацию..."
   repair_config
+  echo "Собираю и запускаю контейнеры..."
   compose_up
   echo "Обновлено до версии $PANEL_VERSION."
   info_cmd
