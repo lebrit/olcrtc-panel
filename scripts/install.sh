@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.10"
+PANEL_VERSION="0.1.11"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -347,7 +347,7 @@ load_env() {
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-      PANEL_VERSION|PANEL_ADMIN_TOKEN|PANEL_DOMAIN|PANEL_PATH|PANEL_PUBLIC_BASE_URL|PANEL_BIND|PANEL_PORT|OLCRTC_DEFAULT_DNS|OLCRTC_DEFAULT_JITSI|OLCRTC_REF)
+      PANEL_ADMIN_TOKEN|PANEL_DOMAIN|PANEL_PATH|PANEL_PUBLIC_BASE_URL|PANEL_BIND|PANEL_PORT|OLCRTC_DEFAULT_DNS|OLCRTC_DEFAULT_JITSI|OLCRTC_REF)
         printf -v "$key" '%s' "$value"
         export "$key"
         ;;
@@ -375,7 +375,11 @@ compose_up() {
   if [ -n "${PANEL_DOMAIN:-}" ]; then
     maybe_stop_web_conflicts
   fi
-  docker compose --profile caddy up -d --build --remove-orphans
+  if [ "${OLCRTC_PANEL_FORCE_RECREATE:-}" = "1" ]; then
+    docker compose --profile caddy up -d --build --force-recreate --remove-orphans
+  else
+    docker compose --profile caddy up -d --build --remove-orphans
+  fi
   docker compose --profile caddy restart caddy >/dev/null 2>&1 || true
 }
 
@@ -423,6 +427,13 @@ update_apply_cmd() {
   compose_up
   echo "Обновлено до версии $PANEL_VERSION."
   info_cmd
+}
+
+rescue_up_cmd() {
+  need_root
+  echo "Аварийное восстановление: обновляю код, wrapper и принудительно пересоздаю контейнеры..."
+  ensure_deps
+  OLCRTC_PANEL_FORCE_RECREATE=1 update_cmd
 }
 
 status_cmd() {
@@ -592,6 +603,7 @@ menu_cmd() {
     echo "  7) Backup"
     echo "  8) Удаление"
     echo "  9) Doctor"
+    echo "  10) Rescue up"
     echo "  0) Выход"
     choice="$(read_required "Выбор")"
     case "$choice" in
@@ -604,6 +616,7 @@ menu_cmd() {
       7) backup_cmd ;;
       8) delete_menu ;;
       9) doctor_cmd ;;
+      10) rescue_up_cmd ;;
       0) exit 0 ;;
     esac
   done
@@ -614,6 +627,7 @@ case "$cmd" in
   install) install_cmd ;;
   update) update_cmd ;;
   update-apply) update_apply_cmd ;;
+  rescue-up) rescue_up_cmd ;;
   status) status_cmd ;;
   info) info_cmd ;;
   doctor) doctor_cmd ;;
@@ -627,7 +641,7 @@ case "$cmd" in
   purge) purge_cmd ;;
   menu) menu_cmd ;;
   *)
-    echo "Использование: $0 install|menu|update|status|info|doctor|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
+    echo "Использование: $0 install|menu|update|update-apply|rescue-up|status|info|doctor|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
     exit 1
     ;;
 esac

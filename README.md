@@ -84,6 +84,7 @@ olcrtc-panel update
 olcrtc-panel backup
 olcrtc-panel config
 olcrtc-panel doctor
+olcrtc-panel rescue-up
 ```
 
 `olcrtc-panel update` также проверяет и чинит доступ к панели: пересобирает `.env` и `Caddyfile` под текущую схему `Caddy -> 127.0.0.1:18080`, сохраняет admin token, делает backup старых файлов и печатает актуальный URL.
@@ -93,6 +94,8 @@ olcrtc-panel doctor
 Update выполняется линейно: обновляет checkout, ставит wrapper, пересобирает `.env`/`Caddyfile`, затем запускает Docker Compose. Отдельная команда `update-apply` оставлена только для ручного аварийного применения уже обновлённого checkout.
 
 `olcrtc-panel info` печатает URL/token до проверки Docker Compose, а `docker compose ps` ограничен timeout, чтобы команда не зависала молча. Для диагностики wrapper, `.env`, git checkout, Docker и Compose есть `olcrtc-panel doctor`.
+
+`olcrtc-panel rescue-up` - аварийный запуск: обновляет checkout, переписывает wrapper, сохраняет текущие URL/token из `.env`, затем пересобирает и пересоздаёт контейнеры через Docker Compose.
 
 Удаление разделено по scope:
 
@@ -132,7 +135,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.10`.
+Текущая версия: `0.1.11`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -159,3 +162,4 @@ bash -n scripts/install.sh
 - Добавить в installer проверку фактической версии контейнера после `docker compose up`, чтобы сразу ловить старый image/tag.
 - Добавить full XMPP websocket join-check с временным room/nick, чтобы проверка полностью совпадала с `olcrtc`.
 - Добавить отдельный `repair-start` без git-операций: только переписать `.env`/`Caddyfile` и поднять контейнеры.
+- Добавить проверку, что `PANEL_VERSION` в `.env` не старее checkout версии, и автоматически чинить mismatch в `doctor`.
