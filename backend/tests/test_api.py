@@ -52,10 +52,46 @@ def test_create_jitsi_profile_and_subscription(tmp_path, monkeypatch):
     assert profile["room_id"].startswith("https://meet.example.org/olcrtc-")
     assert profile["uri"].startswith("olcrtc://jitsi?datachannel@")
     assert profile["subscription_url"].startswith("/sub/")
+    assert profile["profile_subscription_url"].startswith("/sub/")
+    assert f"profile_id={profile['id']}" in profile["profile_subscription_url"]
     token = profile["subscription_url"].split("/sub/", 1)[1]
     sub = client.get(f"/sub/{token}")
     assert sub.status_code == 200
     assert "olcrtc://jitsi?datachannel@" in sub.text
+    profile_sub = client.get(profile["profile_subscription_url"])
+    assert profile_sub.status_code == 200
+    assert "olcrtc://jitsi?datachannel@" in profile_sub.text
+
+
+def test_profile_subscription_filters_single_profile(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    first = client.post(
+        "/api/profiles",
+        json={"user_name": "demo", "provider": "jitsi", "jitsi_server": "https://meet.example.org", "start_now": False},
+        headers=auth_headers(),
+    ).json()
+    second = client.post(
+        "/api/profiles",
+        json={
+            "user_id": first["user_id"],
+            "name": "vp8-only",
+            "provider": "jitsi",
+            "transport": "vp8channel",
+            "jitsi_server": "https://meet.example.org",
+            "start_now": False,
+        },
+        headers=auth_headers(),
+    ).json()
+
+    shared_sub = client.get(first["subscription_url"])
+    profile_sub = client.get(second["profile_subscription_url"])
+
+    assert shared_sub.status_code == 200
+    assert "olcrtc://jitsi?datachannel@" in shared_sub.text
+    assert "olcrtc://jitsi?vp8channel" in shared_sub.text
+    assert profile_sub.status_code == 200
+    assert "olcrtc://jitsi?datachannel@" not in profile_sub.text
+    assert "olcrtc://jitsi?vp8channel" in profile_sub.text
 
 
 def test_delete_profile(tmp_path, monkeypatch):

@@ -68,10 +68,14 @@ def require_auth(authorization: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def subscription_url(token: str) -> str:
+def subscription_url(token: str, profile_id: int | None = None) -> str:
     if settings.PUBLIC_BASE_URL:
-        return f"{settings.PUBLIC_BASE_URL}/sub/{token}"
-    return f"/sub/{token}"
+        url = f"{settings.PUBLIC_BASE_URL}/sub/{token}"
+    else:
+        url = f"/sub/{token}"
+    if profile_id is not None:
+        return f"{url}?profile_id={profile_id}"
+    return url
 
 
 def decorate_profile(profile: dict[str, Any], store: Store) -> dict[str, Any]:
@@ -79,6 +83,7 @@ def decorate_profile(profile: dict[str, Any], store: Store) -> dict[str, Any]:
     item["uri"] = profile_uri(item)
     sub = store.ensure_subscription(int(item["user_id"]), item.get("user_name") or item["name"])
     item["subscription_url"] = subscription_url(sub["token"])
+    item["profile_subscription_url"] = subscription_url(sub["token"], int(item["id"]))
     return item
 
 
@@ -255,12 +260,18 @@ def create_app() -> FastAPI:
         return store.list_events()
 
     @app.get("/sub/{token}", response_class=PlainTextResponse)
-    def subscription(token: str) -> str:
+    def subscription(token: str, profile_id: int | None = None) -> str:
         sub = store.get_subscription(token)
         if sub is None or not sub["enabled"] or not sub["user_enabled"]:
             raise HTTPException(status_code=404, detail="subscription not found")
-        lines = [f"#name: {sub['name']}", f"#update: {int(time.time())}", "#refresh: 10m", "#color: #2563eb", "#icon: olcrtc", ""]
-        for profile in store.list_enabled_profiles_for_user(int(sub["user_id"])):
+        profiles = store.list_enabled_profiles_for_user(int(sub["user_id"]))
+        if profile_id is not None:
+            profiles = [profile for profile in profiles if int(profile["id"]) == profile_id]
+            if not profiles:
+                raise HTTPException(status_code=404, detail="profile not found in subscription")
+        name = sub["name"] if profile_id is None else f"{sub['name']} / {profiles[0]['name']}"
+        lines = [f"#name: {name}", f"#update: {int(time.time())}", "#refresh: 10m", "#color: #2563eb", "#icon: olcrtc", ""]
+        for profile in profiles:
             lines.extend([profile_uri(profile), f"##name: {profile['name']}", f"##comment: {profile['provider']} / {profile['transport']}", ""])
         return "\n".join(lines)
 

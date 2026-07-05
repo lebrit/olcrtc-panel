@@ -16,6 +16,7 @@ type Profile = {
   last_error: string;
   uri: string;
   subscription_url: string;
+  profile_subscription_url: string;
 };
 type Status = { version: string; profiles: Profile[]; users: User[]; running: number };
 type JitsiProbe = { url: string; ok: boolean; latency_ms: number; status: string; requires_registration: boolean };
@@ -366,7 +367,7 @@ function App() {
                           <button onClick={() => action(profile.id, "stop")}><Square size={16} />Stop</button>
                           <button onClick={() => action(profile.id, "rotate-key")}><RotateCw size={16} />Rotate</button>
                           <button onClick={() => copyText("URI скопирован", profile.uri)}><Link2 size={16} />URI</button>
-                          <button onClick={() => copyText("Sub скопирован", profile.subscription_url)}><FileText size={16} />Sub</button>
+                          <button onClick={() => copyText("Sub скопирован", profile.profile_subscription_url || profile.subscription_url)}><FileText size={16} />Sub</button>
                           <button onClick={() => loadLogs(profile.id)}><ScrollText size={16} />Logs</button>
                           <button className="dangerButton" onClick={() => deleteProfile(profile)} disabled={busy}><Trash2 size={16} />Удалить</button>
                         </div>
