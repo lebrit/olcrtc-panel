@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.12"
+PANEL_VERSION="0.1.13"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -164,6 +164,10 @@ read_default() {
   echo "${value:-$default}"
 }
 
+has_prompt_tty() {
+  { : <>/dev/tty; } 2>/dev/null
+}
+
 read_prompt() {
   local prompt="$1"
   local default="${2:-}"
@@ -174,9 +178,10 @@ read_prompt() {
   else
     label="$prompt: "
   fi
-  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    printf '%s' "$label" >/dev/tty
-    IFS= read -r value </dev/tty || value=""
+  if { exec 3<>/dev/tty; } 2>/dev/null; then
+    printf '%s' "$label" >&3
+    IFS= read -r value <&3 || value=""
+    exec 3>&- 3<&-
   elif [ -t 0 ]; then
     read -r -p "$label" value || value=""
   else
@@ -187,13 +192,11 @@ read_prompt() {
 
 read_required() {
   local prompt="$1"
-  local value
-  value="$(read_prompt "$prompt" "")"
-  if [ -z "$value" ] && ! { [ -r /dev/tty ] && [ -w /dev/tty ]; } && ! [ -t 0 ]; then
+  if ! has_prompt_tty && ! [ -t 0 ]; then
     echo "Нет интерактивного терминала для ввода: $prompt" >&2
     return 1
   fi
-  echo "$value"
+  read_prompt "$prompt" ""
 }
 
 normalize_path() {

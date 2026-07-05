@@ -137,7 +137,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.12`.
+Текущая версия: `0.1.13`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -167,3 +167,4 @@ bash -n scripts/install.sh
 - Добавить проверку, что `PANEL_VERSION` в `.env` не старее checkout версии, и автоматически чинить mismatch в `doctor`.
 - Добавить mobile-client smoke-test импорта `olcrtc://` и `sub.md`, чтобы сразу ловить несовпадение transport на телефоне.
 - Добавить installer self-test wrapper-а: проверять, что `/usr/local/bin/olcrtc-panel` не symlink и не указывает на managed `scripts/install.sh`.
+- Добавить non-TTY smoke-test установщика с занятыми портами 80/443, чтобы prompt-ветки не писали ошибки `/dev/tty`.
