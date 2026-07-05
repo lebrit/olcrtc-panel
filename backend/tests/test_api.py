@@ -111,6 +111,79 @@ def test_jitsi_discovery_deduplicates_and_sorts(monkeypatch):
     assert [item["url"] for item in result] == ["https://ok.example", "https://slow.example"]
 
 
+def test_jitsi_probe_requires_anonymous_xmpp(monkeypatch):
+    from olcrtc_panel import providers
+
+    class FakeResponse:
+        def __init__(self, status_code: int, text: str = "") -> None:
+            self.status_code = status_code
+            self.text = text
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            return None
+
+        async def get(self, url: str):
+            if url.endswith("/config.js"):
+                return FakeResponse(200, "hosts: { domain: 'xmpp.example.org', muc: 'conference.xmpp.example.org' }")
+            return FakeResponse(200)
+
+        async def post(self, url: str, content: str, headers: dict[str, str]):
+            assert "to='xmpp.example.org'" in content
+            return FakeResponse(200, "<stream:features><mechanisms><mechanism>PLAIN</mechanism></mechanisms></stream:features>")
+
+    monkeypatch.setattr(providers.httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(providers.probe_jitsi_server("https://meet.example.org"))
+
+    assert result["ok"] is False
+    assert result["requires_registration"] is True
+    assert result["xmpp_anonymous"] is False
+    assert result["status"] == "XMPP не разрешает anonymous login"
+
+
+def test_jitsi_probe_accepts_anonymous_xmpp(monkeypatch):
+    from olcrtc_panel import providers
+
+    class FakeResponse:
+        def __init__(self, status_code: int, text: str = "") -> None:
+            self.status_code = status_code
+            self.text = text
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            return None
+
+        async def get(self, url: str):
+            if url.endswith("/config.js"):
+                return FakeResponse(200, "hosts: { domain: 'xmpp.example.org' }")
+            return FakeResponse(200)
+
+        async def post(self, url: str, content: str, headers: dict[str, str]):
+            assert "to='xmpp.example.org'" in content
+            return FakeResponse(200, "<mechanisms><mechanism>ANONYMOUS</mechanism></mechanisms>")
+
+    monkeypatch.setattr(providers.httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(providers.probe_jitsi_server("https://meet.example.org"))
+
+    assert result["ok"] is True
+    assert result["xmpp_anonymous"] is True
+    assert result["status"] == "config.js и anonymous XMPP доступны"
+
+
 def test_wbstream_room_payload_uses_owner_id_from_jwt():
     from olcrtc_panel import providers
 

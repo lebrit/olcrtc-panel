@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import random
 import re
 import secrets
 import time
@@ -51,6 +52,7 @@ JITSI_CANDIDATES = [
     "https://www.kuketz-meet.de",
 ]
 JITSI_PROBE_CONCURRENCY = 8
+ANONYMOUS_XMPP_RE = re.compile(r"<mechanism>\s*ANONYMOUS\s*</mechanism>", re.IGNORECASE)
 
 
 def normalize_jitsi_base(raw: str) -> str:
@@ -66,8 +68,43 @@ def generate_jitsi_room(base_url: str, prefix: str = "olcrtc") -> str:
     return f"{normalize_jitsi_base(base_url)}/{prefix}-{secrets.token_hex(5)}"
 
 
+def extract_jitsi_xmpp_domain(config_text: str, fallback: str) -> str:
+    match = re.search(r"\bdomain\s*:\s*['\"]([^'\"]+)['\"]", config_text)
+    if match:
+        return match.group(1).strip()
+    return fallback
+
+
+def jitsi_bosh_open_payload(domain: str) -> str:
+    rid = random.randint(100000, 999999999)
+    return (
+        f"<body rid='{rid}' to='{domain}' xml:lang='en' wait='60' hold='1' "
+        "content='text/xml; charset=utf-8' ver='1.6' xmpp:version='1.0' "
+        "xmlns='http://jabber.org/protocol/httpbind' xmlns:xmpp='urn:xmpp:xbosh'/>"
+    )
+
+
+async def probe_jitsi_anonymous_xmpp(client: httpx.AsyncClient, base: str, domain: str) -> dict[str, Any]:
+    check = {"path": "/http-bind", "method": "POST", "ok": False, "status_code": 0, "error": ""}
+    try:
+        resp = await client.post(
+            base + "/http-bind",
+            content=jitsi_bosh_open_payload(domain),
+            headers={"Content-Type": "text/xml; charset=utf-8"},
+        )
+        check["status_code"] = resp.status_code
+        check["ok"] = resp.status_code < 500
+        check["anonymous"] = bool(ANONYMOUS_XMPP_RE.search(resp.text))
+        check["has_mechanisms"] = "<mechanisms" in resp.text
+    except Exception as exc:  # noqa: BLE001 - diagnostic text for UI.
+        check["error"] = str(exc)
+    return check
+
+
 async def probe_jitsi_server(base_url: str, timeout: float = 5.0) -> dict[str, Any]:
     base = normalize_jitsi_base(base_url)
+    web_host = httpx.URL(base).host or base.replace("https://", "").replace("http://", "")
+    xmpp_domain = web_host
     started = time.perf_counter()
     result: dict[str, Any] = {
         "url": base,
@@ -76,9 +113,12 @@ async def probe_jitsi_server(base_url: str, timeout: float = 5.0) -> dict[str, A
         "status": "unknown",
         "checks": [],
         "requires_registration": False,
+        "config_ok": False,
+        "xmpp_domain": xmpp_domain,
+        "xmpp_anonymous": False,
     }
     async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-        for path in ("/", "/config.js", "/http-bind"):
+        for path in ("/", "/config.js"):
             check = {"path": path, "ok": False, "status_code": 0, "error": ""}
             try:
                 resp = await client.get(base + path)
@@ -87,8 +127,11 @@ async def probe_jitsi_server(base_url: str, timeout: float = 5.0) -> dict[str, A
                 if resp.status_code in (401, 403):
                     result["requires_registration"] = True
                 if path == "/config.js" and resp.status_code == 200:
+                    result["config_ok"] = True
                     if re.search(r"tokenAuthUrl|jwt|enableUserRolesBasedOnToken", resp.text, re.IGNORECASE):
                         result["requires_registration"] = True
+                    xmpp_domain = extract_jitsi_xmpp_domain(resp.text, web_host)
+                    result["xmpp_domain"] = xmpp_domain
                     result["ok"] = True
                     result["status"] = "config.js доступен"
                 elif path == "/" and resp.status_code < 400 and not result["ok"]:
@@ -96,15 +139,31 @@ async def probe_jitsi_server(base_url: str, timeout: float = 5.0) -> dict[str, A
             except Exception as exc:  # noqa: BLE001 - diagnostic text for UI.
                 check["error"] = str(exc)
             result["checks"].append(check)
+        xmpp_check = await probe_jitsi_anonymous_xmpp(client, base, xmpp_domain)
+        result["checks"].append(xmpp_check)
+        if xmpp_check.get("anonymous"):
+            result["xmpp_anonymous"] = True
+            if result["ok"]:
+                result["status"] = "config.js и anonymous XMPP доступны"
+        elif xmpp_check.get("has_mechanisms"):
+            result["requires_registration"] = True
+            result["status"] = "XMPP не разрешает anonymous login"
     result["latency_ms"] = int((time.perf_counter() - started) * 1000)
     if not result["ok"] and any(item["ok"] for item in result["checks"]):
         result["ok"] = True
         result["status"] = "сервер отвечает, нужен ручной тест комнаты"
     if result["requires_registration"]:
         result["ok"] = False
-        result["status"] = "требует token/auth, не подходит для anonymous olcrtc"
-    if not result["ok"]:
-        result["status"] = result["status"] if result["requires_registration"] else "не отвечает"
+        if result["status"] != "XMPP не разрешает anonymous login":
+            result["status"] = "требует token/auth, не подходит для anonymous olcrtc"
+    elif not result["config_ok"]:
+        result["ok"] = False
+        result["status"] = "config.js недоступен, Jitsi endpoint не подтверждён"
+    elif not result["xmpp_anonymous"]:
+        result["ok"] = False
+        result["status"] = "anonymous XMPP не подтверждён"
+    if not result["ok"] and result["status"] in {"unknown", "сервер отвечает, нужен ручной тест комнаты"}:
+        result["status"] = "не отвечает"
     return result
 
 

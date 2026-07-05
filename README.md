@@ -53,9 +53,9 @@ olcrtc-panel info
 - `https://freejitsi01.netcup.net`
 - `https://meet.jit.si`
 
-Если сервер отдаёт `401/403` или в `config.js` видны token/JWT настройки, панель помечает его как неподходящий для anonymous `olcrtc` и не выбирает автоматически. Это закрывает кейс `meet.jit.si`, где XMPP может вернуть `token required`.
+Если сервер отдаёт `401/403`, не отдаёт рабочий `config.js`, в `config.js` видны token/JWT настройки или XMPP stream features не рекламируют `ANONYMOUS`, панель помечает его как неподходящий для anonymous `olcrtc` и не выбирает автоматически. Это закрывает кейсы `meet.jit.si`, где XMPP может вернуть `token required`, и серверы с ошибкой `server does not advertise anonymous XMPP login`.
 
-Результаты проверки со статусом `не отвечает` или token/JWT ошибкой заблокированы в UI для выбора одним кликом. Если `olcrtc` всё равно завершился с ошибкой, карточка профиля показывает не только код выхода, но и хвост последних строк лога.
+Результаты проверки со статусом `не отвечает`, `config.js недоступен`, token/JWT ошибкой или запретом anonymous XMPP заблокированы в UI для выбора одним кликом. Если `olcrtc` всё равно завершился с ошибкой, карточка профиля показывает не только код выхода, но и хвост последних строк лога.
 
 ## WBStream
 
@@ -83,6 +83,7 @@ olcrtc-panel logs
 olcrtc-panel update
 olcrtc-panel backup
 olcrtc-panel config
+olcrtc-panel doctor
 ```
 
 `olcrtc-panel update` также проверяет и чинит доступ к панели: пересобирает `.env` и `Caddyfile` под текущую схему `Caddy -> 127.0.0.1:18080`, сохраняет admin token, делает backup старых файлов и печатает актуальный URL.
@@ -90,6 +91,8 @@ olcrtc-panel config
 Если managed checkout в `/opt/olcrtc-panel` содержит локально изменённые tracked-файлы и `git pull` не может продолжить, update сохраняет patch/status в `data/backups/git-local-changes-*.patch` и приводит checkout к `origin/main`. `.env`, `Caddyfile`, база, логи и backups не удаляются.
 
 После обновления checkout installer перезапускает себя из `/opt/olcrtc-panel/scripts/install.sh`, чтобы Docker image, `.env` и итоговый вывод брали уже актуальную версию, а не старый bootstrap-процесс.
+
+`olcrtc-panel info` печатает URL/token до проверки Docker Compose, а `docker compose ps` ограничен timeout, чтобы команда не зависала молча. Для диагностики wrapper, `.env`, git checkout, Docker и Compose есть `olcrtc-panel doctor`.
 
 Удаление разделено по scope:
 
@@ -129,7 +132,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.8`.
+Текущая версия: `0.1.9`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -152,5 +155,6 @@ bash -n scripts/install.sh
 - Добавить real XMPP join-check для Jitsi, чтобы отсеивать серверы до старта профиля.
 - Добавить отдельную кнопку repair-доступа в меню с проверкой HTTP-кода панели после перезапуска Caddy.
 - Добавить авто-предложение пересоздать профиль на ближайшем рабочем Jitsi после ошибки запуска.
-- Добавить отдельную команду `olcrtc-panel doctor`, которая проверяет git checkout, Docker Compose, Caddy route и доступность панели одной диагностикой.
+- Расширить `olcrtc-panel doctor` HTTP-проверкой публичного URL и локального backend `/api/status`.
 - Добавить в installer проверку фактической версии контейнера после `docker compose up`, чтобы сразу ловить старый image/tag.
+- Добавить full XMPP websocket join-check с временным room/nick, чтобы проверка полностью совпадала с `olcrtc`.

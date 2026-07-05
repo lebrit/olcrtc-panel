@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.8"
+PANEL_VERSION="0.1.9"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -339,10 +339,20 @@ load_env() {
     echo "Нет $ENV_FILE. Сначала запусти install."
     exit 1
   fi
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
+  local line key value
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ""|\#*) continue ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      PANEL_VERSION|PANEL_ADMIN_TOKEN|PANEL_DOMAIN|PANEL_PATH|PANEL_PUBLIC_BASE_URL|PANEL_BIND|PANEL_PORT|OLCRTC_DEFAULT_DNS|OLCRTC_DEFAULT_JITSI|OLCRTC_REF)
+        printf -v "$key" '%s' "$value"
+        export "$key"
+        ;;
+    esac
+  done < "$ENV_FILE"
 }
 
 repair_config() {
@@ -361,10 +371,7 @@ repair_config() {
 
 compose_up() {
   cd "$APP_DIR"
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
+  load_env
   if [ -n "${PANEL_DOMAIN:-}" ]; then
     maybe_stop_web_conflicts
   fi
@@ -421,7 +428,7 @@ update_apply_cmd() {
 
 status_cmd() {
   cd "$APP_DIR"
-  docker compose ps
+  compose_ps_safe
 }
 
 info_cmd() {
@@ -431,7 +438,50 @@ info_cmd() {
   echo "Admin token: $(grep '^PANEL_ADMIN_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
   echo
   cd "$APP_DIR"
-  docker compose ps
+  compose_ps_safe
+}
+
+compose_ps_safe() {
+  if has_cmd timeout; then
+    timeout 8 docker compose ps || echo "docker compose ps не ответил за 8 секунд. Попробуй: docker compose logs --tail=80"
+  else
+    docker compose ps || true
+  fi
+}
+
+doctor_cmd() {
+  echo "olcrtc-panel doctor"
+  echo "Wrapper: $(command -v olcrtc-panel || true)"
+  echo "APP_DIR: $APP_DIR"
+  echo "Installer version: $PANEL_VERSION"
+  if [ -f "$APP_DIR/VERSION" ]; then
+    echo "Checkout VERSION: $(cat "$APP_DIR/VERSION")"
+  fi
+  if [ -f "$ENV_FILE" ]; then
+    echo "ENV version: $(grep '^PANEL_VERSION=' "$ENV_FILE" | cut -d= -f2-)"
+    echo "URL: $(grep '^PANEL_PUBLIC_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)"
+    echo "Path: $(grep '^PANEL_PATH=' "$ENV_FILE" | cut -d= -f2-)"
+  else
+    echo "ENV: missing $ENV_FILE"
+  fi
+  if [ -d "$APP_DIR/.git" ]; then
+    git -C "$APP_DIR" status --short --branch || true
+    git -C "$APP_DIR" log -1 --oneline || true
+  fi
+  if has_cmd docker; then
+    docker --version || true
+  else
+    echo "Docker: missing"
+  fi
+  if has_cmd timeout; then
+    timeout 8 docker compose version || echo "docker compose version timeout/fail"
+  else
+    docker compose version || true
+  fi
+  if [ -d "$APP_DIR" ]; then
+    cd "$APP_DIR"
+    compose_ps_safe
+  fi
 }
 
 logs_cmd() {
@@ -542,6 +592,7 @@ menu_cmd() {
     echo "  6) Домен, путь, admin token"
     echo "  7) Backup"
     echo "  8) Удаление"
+    echo "  9) Doctor"
     echo "  0) Выход"
     choice="$(read_required "Выбор")"
     case "$choice" in
@@ -553,6 +604,7 @@ menu_cmd() {
       6) config_cmd ;;
       7) backup_cmd ;;
       8) delete_menu ;;
+      9) doctor_cmd ;;
       0) exit 0 ;;
     esac
   done
@@ -565,6 +617,7 @@ case "$cmd" in
   update-apply) update_apply_cmd ;;
   status) status_cmd ;;
   info) info_cmd ;;
+  doctor) doctor_cmd ;;
   logs) logs_cmd ;;
   restart) restart_cmd ;;
   backup) backup_cmd ;;
@@ -575,7 +628,7 @@ case "$cmd" in
   purge) purge_cmd ;;
   menu) menu_cmd ;;
   *)
-    echo "Использование: $0 install|menu|update|status|info|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
+    echo "Использование: $0 install|menu|update|status|info|doctor|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
     exit 1
     ;;
 esac
