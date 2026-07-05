@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.1"
+PANEL_VERSION="0.1.2"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -33,16 +33,16 @@ install_packages() {
   case "$pm" in
     apt)
       apt-get update
-      DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git openssl docker.io docker-compose-plugin
+      DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git openssl docker.io
       ;;
     dnf)
-      dnf install -y ca-certificates curl git openssl docker docker-compose-plugin
+      dnf install -y ca-certificates curl git openssl docker
       ;;
     yum)
-      yum install -y ca-certificates curl git openssl docker docker-compose-plugin
+      yum install -y ca-certificates curl git openssl docker
       ;;
     pacman)
-      pacman -Sy --noconfirm ca-certificates curl git openssl docker docker-compose
+      pacman -Sy --noconfirm ca-certificates curl git openssl docker
       ;;
     *)
       echo "Неизвестный пакетный менеджер. Установи Docker, docker compose, git, curl, openssl вручную."
@@ -51,11 +51,84 @@ install_packages() {
   esac
 }
 
+compose_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    armv7l|armv7) echo "armv7" ;;
+    *)
+      echo "Неподдерживаемая архитектура для auto-install Docker Compose: $(uname -m)"
+      exit 1
+      ;;
+  esac
+}
+
+install_compose_from_github() {
+  local os arch plugin_dir plugin_url plugin_path
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(compose_arch)"
+  plugin_dir="/usr/local/lib/docker/cli-plugins"
+  plugin_path="$plugin_dir/docker-compose"
+  plugin_url="https://github.com/docker/compose/releases/latest/download/docker-compose-${os}-${arch}"
+
+  echo "Docker Compose package не найден в репозиториях ОС. Ставлю Compose v2 CLI plugin из официального GitHub release."
+  mkdir -p "$plugin_dir"
+  curl -fL "$plugin_url" -o "$plugin_path"
+  chmod 0755 "$plugin_path"
+}
+
+install_compose_package_if_available() {
+  local pm
+  pm="$(detect_pm)"
+  case "$pm" in
+    apt)
+      apt-get update
+      if apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+      elif apt-cache show docker-compose-v2 >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2
+      elif apt-cache show docker-compose >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose || true
+      fi
+      ;;
+    dnf)
+      dnf install -y docker-compose-plugin || dnf install -y docker-compose || true
+      ;;
+    yum)
+      yum install -y docker-compose-plugin || yum install -y docker-compose || true
+      ;;
+    pacman)
+      pacman -Sy --noconfirm docker-compose || true
+      ;;
+  esac
+}
+
+ensure_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Docker установлен, но команда 'docker compose' недоступна. Проверяю доступные варианты установки Compose."
+  install_compose_package_if_available
+
+  if docker compose version >/dev/null 2>&1; then
+    return
+  fi
+
+  install_compose_from_github
+
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Не удалось установить Docker Compose v2. Проверь Docker CLI plugin path и доступ к github.com."
+    exit 1
+  fi
+}
+
 ensure_deps() {
-  if ! has_cmd docker || ! docker compose version >/dev/null 2>&1 || ! has_cmd git || ! has_cmd curl || ! has_cmd openssl; then
+  if ! has_cmd docker || ! has_cmd git || ! has_cmd curl || ! has_cmd openssl; then
     install_packages
   fi
   systemctl enable --now docker >/dev/null 2>&1 || true
+  ensure_compose
 }
 
 rand_token() {
