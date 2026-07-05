@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.4"
+PANEL_VERSION="0.1.5"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -294,14 +294,16 @@ write_env() {
   local domain="$1"
   local path="$2"
   local token="$3"
-  local public_url
-  local bind
+  local public_url bind dns jitsi_ref olcrtc_ref
   if [ -n "$domain" ]; then
     public_url="https://${domain}${path}"
   else
     public_url="http://$(server_ip):8080${path}"
   fi
   bind="127.0.0.1"
+  dns="${OLCRTC_DEFAULT_DNS:-8.8.8.8:53}"
+  jitsi_ref="${OLCRTC_DEFAULT_JITSI:-https://fairmeeting.net}"
+  olcrtc_ref="${OLCRTC_REF:-master}"
   cat > "$ENV_FILE" <<EOF
 PANEL_VERSION=$PANEL_VERSION
 PANEL_ADMIN_TOKEN=$token
@@ -310,11 +312,36 @@ PANEL_PATH=$path
 PANEL_PUBLIC_BASE_URL=$public_url
 PANEL_BIND=$bind
 PANEL_PORT=18080
-OLCRTC_DEFAULT_DNS=8.8.8.8:53
-OLCRTC_DEFAULT_JITSI=https://fairmeeting.net
-OLCRTC_REF=master
+OLCRTC_DEFAULT_DNS=$dns
+OLCRTC_DEFAULT_JITSI=$jitsi_ref
+OLCRTC_REF=$olcrtc_ref
 EOF
   chmod 600 "$ENV_FILE"
+}
+
+load_env() {
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "Нет $ENV_FILE. Сначала запусти install."
+    exit 1
+  fi
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+}
+
+repair_config() {
+  load_env
+  local token domain path stamp
+  token="${PANEL_ADMIN_TOKEN:-$(rand_token)}"
+  domain="${PANEL_DOMAIN:-}"
+  path="$(normalize_path "${PANEL_PATH:-}")"
+  path="$(ensure_secret_path "$path")"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  cp "$ENV_FILE" "$ENV_FILE.bak-$stamp" 2>/dev/null || true
+  [ -f "$APP_DIR/Caddyfile" ] && cp "$APP_DIR/Caddyfile" "$APP_DIR/Caddyfile.bak-$stamp" 2>/dev/null || true
+  write_caddyfile "$domain" "$path"
+  write_env "$domain" "$path" "$token"
 }
 
 compose_up() {
@@ -327,6 +354,7 @@ compose_up() {
     maybe_stop_web_conflicts
   fi
   docker compose --profile caddy up -d --build --remove-orphans
+  docker compose --profile caddy restart caddy >/dev/null 2>&1 || true
 }
 
 install_cmd() {
@@ -361,15 +389,23 @@ update_cmd() {
   need_root
   clone_or_update_repo
   install_cli_wrapper
-  if [ ! -f "$ENV_FILE" ]; then
-    echo "Нет $ENV_FILE. Сначала запусти install."
-    exit 1
-  fi
+  repair_config
   compose_up
   echo "Обновлено до версии $PANEL_VERSION."
+  info_cmd
 }
 
 status_cmd() {
+  cd "$APP_DIR"
+  docker compose ps
+}
+
+info_cmd() {
+  load_env
+  echo "URL: $(grep '^PANEL_PUBLIC_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)"
+  echo "Путь: $(grep '^PANEL_PATH=' "$ENV_FILE" | cut -d= -f2-)"
+  echo "Admin token: $(grep '^PANEL_ADMIN_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+  echo
   cd "$APP_DIR"
   docker compose ps
 }
@@ -435,14 +471,11 @@ purge_cmd() {
 
 config_cmd() {
   need_root
-  if [ ! -f "$ENV_FILE" ]; then
-    echo "Нет $ENV_FILE. Сначала запусти install."
-    exit 1
-  fi
+  load_env
   local old_token domain path token
-  old_token="$(grep '^PANEL_ADMIN_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
-  domain="$(read_default "Новый домен, пусто для http://IP:8080" "$(grep '^PANEL_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)")"
-  path="$(normalize_path "$(read_default "Секретный путь панели" "$(grep '^PANEL_PATH=' "$ENV_FILE" | cut -d= -f2-)")")"
+  old_token="${PANEL_ADMIN_TOKEN:-$(rand_token)}"
+  domain="$(read_default "Новый домен, пусто для http://IP:8080" "${PANEL_DOMAIN:-}")"
+  path="$(normalize_path "$(read_default "Секретный путь панели" "${PANEL_PATH:-$(secret_panel_path)}")")"
   path="$(ensure_secret_path "$path")"
   rotate="$(read_default "Сгенерировать новый admin token?" "N")"
   case "$rotate" in
@@ -478,22 +511,24 @@ menu_cmd() {
     echo
     echo "olcrtc-panel $PANEL_VERSION"
     echo "  1) Статус"
-    echo "  2) Логи"
-    echo "  3) Обновить"
-    echo "  4) Перезапустить"
-    echo "  5) Домен, путь, admin token"
-    echo "  6) Backup"
-    echo "  7) Удаление"
+    echo "  2) URL и admin token"
+    echo "  3) Логи"
+    echo "  4) Обновить"
+    echo "  5) Перезапустить"
+    echo "  6) Домен, путь, admin token"
+    echo "  7) Backup"
+    echo "  8) Удаление"
     echo "  0) Выход"
     choice="$(read_required "Выбор")"
     case "$choice" in
       1) status_cmd ;;
-      2) logs_cmd ;;
-      3) update_cmd ;;
-      4) restart_cmd ;;
-      5) config_cmd ;;
-      6) backup_cmd ;;
-      7) delete_menu ;;
+      2) info_cmd ;;
+      3) logs_cmd ;;
+      4) update_cmd ;;
+      5) restart_cmd ;;
+      6) config_cmd ;;
+      7) backup_cmd ;;
+      8) delete_menu ;;
       0) exit 0 ;;
     esac
   done
@@ -504,6 +539,7 @@ case "$cmd" in
   install) install_cmd ;;
   update) update_cmd ;;
   status) status_cmd ;;
+  info) info_cmd ;;
   logs) logs_cmd ;;
   restart) restart_cmd ;;
   backup) backup_cmd ;;
@@ -514,7 +550,7 @@ case "$cmd" in
   purge) purge_cmd ;;
   menu) menu_cmd ;;
   *)
-    echo "Использование: $0 install|menu|update|status|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
+    echo "Использование: $0 install|menu|update|status|info|logs|restart|backup|config|uninstall|delete-runtime|delete-backups|purge"
     exit 1
     ;;
 esac

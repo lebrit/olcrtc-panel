@@ -18,6 +18,12 @@ curl -fsSL https://raw.githubusercontent.com/lebrit/olcrtc-panel/main/scripts/in
 olcrtc-panel
 ```
 
+Показать текущий URL панели, секретный путь и admin token:
+
+```bash
+olcrtc-panel info
+```
+
 ## Что входит
 
 - FastAPI backend, SQLite state, React/Vite frontend.
@@ -69,11 +75,14 @@ olcrtc-panel
 
 ```bash
 olcrtc-panel status
+olcrtc-panel info
 olcrtc-panel logs
 olcrtc-panel update
 olcrtc-panel backup
 olcrtc-panel config
 ```
+
+`olcrtc-panel update` также проверяет и чинит доступ к панели: пересобирает `.env` и `Caddyfile` под текущую схему `Caddy -> 127.0.0.1:18080`, сохраняет admin token, делает backup старых файлов и печатает актуальный URL.
 
 Удаление разделено по scope:
 
@@ -113,7 +122,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.4`.
+Текущая версия: `0.1.5`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -134,3 +143,4 @@ bash -n scripts/install.sh
 - Добавить matrix smoke-test установщика на чистых Debian/Ubuntu/Fedora образах.
 - Добавить UI-проверку, что текущая панель действительно открыта только через секретный путь.
 - Добавить real XMPP join-check для Jitsi, чтобы отсеивать серверы до старта профиля.
+- Добавить отдельную кнопку repair-доступа в меню с проверкой HTTP-кода панели после перезапуска Caddy.
