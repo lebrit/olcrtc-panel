@@ -1,11 +1,14 @@
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Copy, FileText, Link2, LogOut, Play, Plus, RefreshCw, RotateCw, ScrollText, Search, Server, Square } from "lucide-react";
 import "./styles.css";
 
 type User = { id: number; name: string; enabled: number; note: string };
 type Profile = {
   id: number;
+  user_id: number;
   user_name: string;
+  name: string;
   provider: string;
   transport: string;
   room_id: string;
@@ -27,12 +30,35 @@ function apiPath(path: string): string {
   return `${base}${clean}`;
 }
 
+function shortRoom(room: string): string {
+  if (room.length <= 48) return room;
+  return `${room.slice(0, 30)}...${room.slice(-14)}`;
+}
+
+function responseError(text: string, fallback: string): string {
+  if (!text) return fallback;
+  try {
+    const data = JSON.parse(text) as { detail?: unknown };
+    if (typeof data.detail === "string") return data.detail;
+    if (data.detail && typeof data.detail === "object" && "message" in data.detail) {
+      const detail = data.detail as { message?: unknown; attempts?: unknown };
+      const message = typeof detail.message === "string" ? detail.message : fallback;
+      const attempts = Array.isArray(detail.attempts) ? ` Попыток: ${detail.attempts.length}.` : "";
+      return `${message}${attempts}`;
+    }
+  } catch {
+    return text;
+  }
+  return text;
+}
+
 function App() {
   const [token, setToken] = useState(storedToken);
   const [draftToken, setDraftToken] = useState(storedToken);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState("");
   const [logs, setLogs] = useState("");
+  const [copied, setCopied] = useState("");
   const [selectedProfile, setSelectedProfile] = useState<number | null>(null);
   const [jitsi, setJitsi] = useState<JitsiProbe[]>([]);
   const [busy, setBusy] = useState(false);
@@ -40,20 +66,53 @@ function App() {
     user_name: "",
     provider: "jitsi",
     transport: "",
-    jitsi_server: "https://meet.handyweb.org",
+    jitsi_server: "https://fairmeeting.net",
     room_id: "",
     auth_token: "",
     auto_wbstream_room: true,
     start_now: true,
   });
 
+  const profiles = status?.profiles || [];
+  const users = status?.users || [];
+  const profilesByUser = useMemo(() => {
+    const grouped = new Map<number, Profile[]>();
+    for (const profile of profiles) {
+      const list = grouped.get(profile.user_id) || [];
+      list.push(profile);
+      grouped.set(profile.user_id, list);
+    }
+    return grouped;
+  }, [profiles]);
   const headers = useMemo(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
 
   async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(apiPath(path), { ...init, headers: { ...headers, ...(init.headers || {}) } });
-    if (!response.ok) throw new Error((await response.text()) || response.statusText);
+    if (!response.ok) throw new Error(responseError(await response.text(), response.statusText));
     const contentType = response.headers.get("content-type") || "";
     return contentType.includes("application/json") ? ((await response.json()) as T) : ((await response.text()) as T);
+  }
+
+  async function copyText(label: string, text: string) {
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
+      setCopied(label);
+      window.setTimeout(() => setCopied(""), 1800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function refresh() {
@@ -127,36 +186,49 @@ function App() {
     return (
       <main className="login">
         <form onSubmit={login} className="loginBox">
+          <div className="loginMark">ol</div>
           <h1>olcrtc panel</h1>
           <label>
             Admin token
             <input value={draftToken} onChange={(event) => setDraftToken(event.target.value)} autoFocus />
           </label>
-          <button type="submit">Войти</button>
+          <button className="primaryButton" type="submit">Войти</button>
         </form>
       </main>
     );
   }
 
   return (
-    <main>
+    <main className="appShell">
       <header className="topbar">
         <div>
-          <h1>olcrtc panel</h1>
-          <span>v{status?.version || "0.1.0"} · активных профилей: {status?.running || 0}</span>
+          <p className="eyebrow">olcrtc panel</p>
+          <h1>Панель управления</h1>
+          <span>v{status?.version || "0.1.0"}</span>
         </div>
         <div className="topActions">
-          <button onClick={refresh} disabled={busy}>Обновить</button>
-          <button onClick={() => { localStorage.removeItem("olcrtc-panel-token"); setToken(""); }}>Выйти</button>
+          <button onClick={refresh} disabled={busy}><RefreshCw size={16} />Обновить</button>
+          <button onClick={() => { localStorage.removeItem("olcrtc-panel-token"); setToken(""); }}><LogOut size={16} />Выйти</button>
         </div>
       </header>
 
-      {error && <pre className="error">{error}</pre>}
+      <section className="metrics" aria-label="Сводка">
+        <div className="metric"><span>Активные</span><strong>{status?.running || 0}</strong></div>
+        <div className="metric"><span>Профили</span><strong>{profiles.length}</strong></div>
+        <div className="metric"><span>Пользователи</span><strong>{users.length}</strong></div>
+        <div className="metric"><span>Jitsi серверы</span><strong>{jitsi.length || "..."}</strong></div>
+      </section>
 
-      <section className="band">
+      {error && <pre className="error">{error}</pre>}
+      {copied && <div className="toast">{copied}</div>}
+
+      <section className="panel">
         <div className="sectionTitle">
-          <h2>Мастер профиля</h2>
-          <button onClick={discoverJitsi} disabled={busy}>Проверить Jitsi</button>
+          <div>
+            <h2>Мастер профиля</h2>
+            <span>Jitsi, WBStream, transport и запуск</span>
+          </div>
+          <button onClick={discoverJitsi} disabled={busy}><Search size={16} />Проверить Jitsi</button>
         </div>
         <form className="gridForm" onSubmit={createProfile}>
           <label>Пользователь<input value={form.user_name} onChange={(event) => setForm({ ...form, user_name: event.target.value })} /></label>
@@ -182,61 +254,92 @@ function App() {
           <label>Room ID<input value={form.room_id} onChange={(event) => setForm({ ...form, room_id: event.target.value })} /></label>
           {form.provider === "wbstream" && (
             <>
-              <label>WB token<input value={form.auth_token} onChange={(event) => setForm({ ...form, auth_token: event.target.value })} /></label>
-              <label className="checkbox"><input type="checkbox" checked={form.auto_wbstream_room} onChange={(event) => setForm({ ...form, auto_wbstream_room: event.target.checked })} />Автосоздание room</label>
+              <label>WB account token<input value={form.auth_token} onChange={(event) => setForm({ ...form, auth_token: event.target.value })} /></label>
+              <label className="switch"><input type="checkbox" checked={form.auto_wbstream_room} onChange={(event) => setForm({ ...form, auto_wbstream_room: event.target.checked })} />Автосоздание room</label>
             </>
           )}
-          <label className="checkbox"><input type="checkbox" checked={form.start_now} onChange={(event) => setForm({ ...form, start_now: event.target.checked })} />Запустить сразу</label>
-          <button type="submit" disabled={busy}>Создать</button>
+          <label className="switch"><input type="checkbox" checked={form.start_now} onChange={(event) => setForm({ ...form, start_now: event.target.checked })} />Запустить сразу</label>
+          <button className="primaryButton" type="submit" disabled={busy}><Plus size={16} />Создать</button>
         </form>
         {jitsi.length > 0 && (
           <div className="probeGrid">
             {jitsi.map((item) => (
               <button className={item.ok ? "probe ok" : "probe"} key={item.url} onClick={() => setForm({ ...form, jitsi_server: item.url })}>
-                <b>{item.url}</b><span>{item.status} · {item.latency_ms} ms</span>
+                <span className="probeHead"><Server size={16} />{item.url}</span>
+                <span>{item.status} · {item.latency_ms} ms{item.requires_registration ? " · auth" : ""}</span>
               </button>
             ))}
           </div>
         )}
       </section>
 
-      <section className="band">
-        <h2>Профили</h2>
-        <div className="tableWrap">
-          <table>
-            <thead><tr><th>ID</th><th>Пользователь</th><th>Provider</th><th>Transport</th><th>Status</th><th>Room</th><th>Действия</th></tr></thead>
-            <tbody>
-              {(status?.profiles || []).map((profile) => (
-                <tr key={profile.id}>
-                  <td>{profile.id}</td><td>{profile.user_name}</td><td>{profile.provider}</td><td>{profile.transport}</td>
-                  <td><span className={`pill ${profile.status}`}>{profile.status}</span></td>
-                  <td className="mono">{profile.room_id}</td>
-                  <td className="actions">
-                    <button onClick={() => action(profile.id, "start")}>Start</button>
-                    <button onClick={() => action(profile.id, "stop")}>Stop</button>
-                    <button onClick={() => action(profile.id, "rotate-key")}>Rotate</button>
-                    <button onClick={() => navigator.clipboard.writeText(profile.uri)}>URI</button>
-                    <button onClick={() => navigator.clipboard.writeText(profile.subscription_url)}>Sub</button>
-                    <button onClick={() => loadLogs(profile.id)}>Logs</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="band twoCols">
-        <div>
-          <h2>Пользователи</h2>
-          <div className="tableWrap">
-            <table>
-              <thead><tr><th>ID</th><th>Имя</th><th>Status</th><th>Заметка</th></tr></thead>
-              <tbody>{(status?.users || []).map((user) => <tr key={user.id}><td>{user.id}</td><td>{user.name}</td><td>{user.enabled ? "enabled" : "disabled"}</td><td>{user.note}</td></tr>)}</tbody>
-            </table>
+      <section className="split">
+        <div className="panel">
+          <div className="sectionTitle">
+            <div>
+              <h2>Пользователи и профили</h2>
+              <span>{users.length} пользователей · {profiles.length} профилей</span>
+            </div>
+          </div>
+          <div className="userStack">
+            {users.map((user) => {
+              const userProfiles = profilesByUser.get(user.id) || [];
+              return (
+                <article className="userCard" key={user.id}>
+                  <div className="userHead">
+                    <div>
+                      <h3>{user.name}</h3>
+                      <p>#{user.id} · {user.enabled ? "enabled" : "disabled"}{user.note ? ` · ${user.note}` : ""}</p>
+                    </div>
+                    <span className="profileCount">{userProfiles.length}</span>
+                  </div>
+                  <div className="nestedProfiles">
+                    {userProfiles.map((profile) => (
+                      <div className="nestedProfile" key={profile.id}>
+                        <div className="nestedProfileMain">
+                          <div className="cardHead compact">
+                            <div>
+                              <span className="profileId">#{profile.id}</span>
+                              <h4>{profile.name || profile.provider}</h4>
+                              <p>{profile.provider} · {profile.transport}</p>
+                            </div>
+                            <span className={`pill ${profile.status}`}>{profile.status}</span>
+                          </div>
+                          <div className="roomLine">
+                            <span className="mono">{shortRoom(profile.room_id)}</span>
+                            <button className="toolButton" onClick={() => copyText("Room скопирован", profile.room_id)} title="Скопировать room">
+                              <Copy size={16} />Room
+                            </button>
+                          </div>
+                          {profile.last_error && <pre className="inlineError">{profile.last_error}</pre>}
+                        </div>
+                        <div className="cardActions">
+                          <button onClick={() => action(profile.id, "start")}><Play size={16} />Start</button>
+                          <button onClick={() => action(profile.id, "stop")}><Square size={16} />Stop</button>
+                          <button onClick={() => action(profile.id, "rotate-key")}><RotateCw size={16} />Rotate</button>
+                          <button onClick={() => copyText("URI скопирован", profile.uri)}><Link2 size={16} />URI</button>
+                          <button onClick={() => copyText("Sub скопирован", profile.subscription_url)}><FileText size={16} />Sub</button>
+                          <button onClick={() => loadLogs(profile.id)}><ScrollText size={16} />Logs</button>
+                        </div>
+                      </div>
+                    ))}
+                    {userProfiles.length === 0 && <div className="emptyState compactEmpty">Профилей пока нет</div>}
+                  </div>
+                </article>
+              );
+            })}
+            {users.length === 0 && <div className="emptyState">Пользователей пока нет</div>}
           </div>
         </div>
-        <div><h2>Логи {selectedProfile ? `#${selectedProfile}` : ""}</h2><pre className="logs">{logs}</pre></div>
+        <div className="panel logsPanel">
+          <div className="sectionTitle">
+            <div>
+              <h2>Логи {selectedProfile ? `#${selectedProfile}` : ""}</h2>
+              <span>{selectedProfile ? "Последний выбранный профиль" : "Профиль не выбран"}</span>
+            </div>
+          </div>
+          <pre className="logs">{logs}</pre>
+        </div>
       </section>
     </main>
   );

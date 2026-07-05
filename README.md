@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/lebrit/olcrtc-panel/main/scripts/in
 После установки меню доступно командой:
 
 ```bash
-olcrtc-panel menu
+olcrtc-panel
 ```
 
 ## Что входит
@@ -26,28 +26,33 @@ olcrtc-panel menu
 - Интерактивный installer/menu на русском.
 - Автогенерация Jitsi room URL.
 - Проверка доступных Jitsi серверов из сети сервера.
-- WBStream profile wizard с экспериментальным автосозданием room.
-- Отдельные пользователи, профили, URI и subscription token.
+- WBStream profile wizard с account token / готовым Room ID.
+- Пользователи с вложенными профилями, URI, room copy и subscription token.
 - Start/stop/rotate key/logs из панели.
 
 ## Jitsi
 
-По умолчанию используется `jitsi + datachannel`.
+По умолчанию используется `jitsi + datachannel`, стартовый сервер: `https://fairmeeting.net`.
 
-Панель умеет проверять список серверов:
+Панель умеет параллельно проверять расширенный список известных серверов и выбирать первый сервер без явных token/JWT требований. В список входят, например:
 
-- `https://meet.handyweb.org`
-- `https://meet.small-dm.ru`
-- `https://meet1.arbitr.ru`
+- `https://fairmeeting.net`
+- `https://meet.ffmuc.net`
+- `https://meet.in-berlin.de`
+- `https://meet.systemli.org`
+- `https://meet.opensuse.org`
+- `https://jitsi.debian.social`
+- `https://jitsi.hamburg.ccc.de`
+- `https://freejitsi01.netcup.net`
 - `https://meet.jit.si`
 
-Для Jitsi обычно не нужна регистрация. Если конкретный сервер отвечает `401/403` или закрывает комнаты политикой инстанса, панель помечает его как требующий ручной проверки.
+Если сервер отдаёт `401/403` или в `config.js` видны token/JWT настройки, панель помечает его как неподходящий для anonymous `olcrtc` и не выбирает автоматически. Это закрывает кейс `meet.jit.si`, где XMPP может вернуть `token required`.
 
 ## WBStream
 
 По умолчанию используется `wbstream + vp8channel`.
 
-Автосоздание WBStream room в этом релизе экспериментальное: панель пробует известные API endpoint-кандидаты и показывает диагностический ответ, если WBStream требует аккаунтный token или изменил API. Если room уже известен, его можно вставить в поле `Room ID`.
+Автосоздание WBStream room обновлено под текущий API payload `roomInfo`. Guest-token сейчас получает ответ `Guests are not allowed to create room`, поэтому для автосоздания нужен account token с правом создания room. Если room уже известен, его можно вставить в поле `Room ID` и отключить автосоздание.
 
 `wbstream + datachannel` не включается по умолчанию, потому что guest-flow обычно не имеет `canPublishData=true`.
 
@@ -108,7 +113,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.3`.
+Текущая версия: `0.1.4`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -120,7 +125,7 @@ bash -n scripts/install.sh
 
 ## Что улучшить дальше
 
-- Довести WBStream room auto-create до стабильного API-контракта после проверки на живом аккаунте.
+- Проверить WBStream room auto-create на живом account token и зафиксировать права/поля API.
 - Добавить managed `olcrtc` server через `pkg/olcrtc/tunnel` и `AuthHook`, чтобы отключать пользователей без отдельного room/key на профиль.
 - Добавить real-provider e2e проверки Jitsi/WBStream прямо из панели.
 - Добавить traffic accounting по профилям без парсинга логов.
@@ -128,3 +133,4 @@ bash -n scripts/install.sh
 - Добавить кэширование Docker build слоёв в CI, чтобы релизы собирались быстрее.
 - Добавить matrix smoke-test установщика на чистых Debian/Ubuntu/Fedora образах.
 - Добавить UI-проверку, что текущая панель действительно открыта только через секретный путь.
+- Добавить real XMPP join-check для Jitsi, чтобы отсеивать серверы до старта профиля.

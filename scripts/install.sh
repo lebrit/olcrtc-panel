@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.3"
+PANEL_VERSION="0.1.4"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -255,6 +255,18 @@ clone_or_update_repo() {
   fi
 }
 
+install_cli_wrapper() {
+  cat > /usr/local/bin/olcrtc-panel <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [ "\$#" -eq 0 ]; then
+  set -- menu
+fi
+exec bash "$APP_DIR/scripts/install.sh" "\$@"
+EOF
+  chmod 0755 /usr/local/bin/olcrtc-panel
+}
+
 write_caddyfile() {
   local domain="$1"
   local path="$2"
@@ -299,7 +311,7 @@ PANEL_PUBLIC_BASE_URL=$public_url
 PANEL_BIND=$bind
 PANEL_PORT=18080
 OLCRTC_DEFAULT_DNS=8.8.8.8:53
-OLCRTC_DEFAULT_JITSI=https://meet.handyweb.org
+OLCRTC_DEFAULT_JITSI=https://fairmeeting.net
 OLCRTC_REF=master
 EOF
   chmod 600 "$ENV_FILE"
@@ -333,7 +345,7 @@ install_cmd() {
 
   write_caddyfile "$domain" "$path"
   write_env "$domain" "$path" "$token"
-  ln -sf "$APP_DIR/scripts/install.sh" /usr/local/bin/olcrtc-panel
+  install_cli_wrapper
 
   compose_up
 
@@ -342,12 +354,13 @@ install_cmd() {
   echo "URL: $(grep '^PANEL_PUBLIC_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)"
   echo "Admin token: $token"
   echo
-  echo "Меню: olcrtc-panel menu"
+  echo "Меню: olcrtc-panel"
 }
 
 update_cmd() {
   need_root
   clone_or_update_repo
+  install_cli_wrapper
   if [ ! -f "$ENV_FILE" ]; then
     echo "Нет $ENV_FILE. Сначала запусти install."
     exit 1

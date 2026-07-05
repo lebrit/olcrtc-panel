@@ -27,7 +27,7 @@ OLCRTC_BIN = os.getenv("OLCRTC_BIN", "/usr/local/bin/olcrtc")
 OLCRTC_DATA_DIR = os.getenv("OLCRTC_DATA_DIR", "/opt/olcrtc-data")
 
 DEFAULT_DNS = os.getenv("OLCRTC_DEFAULT_DNS", "8.8.8.8:53")
-DEFAULT_JITSI = os.getenv("OLCRTC_DEFAULT_JITSI", "https://meet.handyweb.org")
+DEFAULT_JITSI = os.getenv("OLCRTC_DEFAULT_JITSI", "https://fairmeeting.net")
 
 
 def ensure_dirs() -> None:

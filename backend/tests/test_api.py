@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
 import importlib
 from pathlib import Path
 
@@ -53,3 +56,37 @@ def test_create_jitsi_profile_and_subscription(tmp_path, monkeypatch):
     sub = client.get(f"/sub/{token}")
     assert sub.status_code == 200
     assert "olcrtc://jitsi?datachannel@" in sub.text
+
+
+def test_jitsi_discovery_deduplicates_and_sorts(monkeypatch):
+    from olcrtc_panel import providers
+
+    async def fake_probe(candidate: str):
+        return {
+            "url": candidate,
+            "ok": candidate.endswith("ok.example"),
+            "latency_ms": 10 if candidate.endswith("ok.example") else 500,
+            "status": "test",
+        }
+
+    monkeypatch.setattr(providers, "probe_jitsi_server", fake_probe)
+    result = asyncio.run(providers.discover_jitsi(["ok.example", "https://ok.example", "https://slow.example"]))
+
+    assert [item["url"] for item in result] == ["https://ok.example", "https://slow.example"]
+
+
+def test_wbstream_room_payload_uses_owner_id_from_jwt():
+    from olcrtc_panel import providers
+
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": "owner-1", "user": {"userID": "owner-2"}}).encode()).decode().rstrip("=")
+    token = f"header.{payload}.sig"
+
+    owner_id = providers.wb_owner_id_from_token(token)
+    room_payload = providers.wb_room_payloads("demo", owner_id)[0]
+
+    assert owner_id == "owner-2"
+    assert room_payload["roomInfo"]["ownerId"] == "owner-2"
+    assert room_payload["roomInfo"]["title"] == "demo"
+    assert room_payload["roomInfo"]["roomType"] == 1
+    assert room_payload["roomInfo"]["roomPrivacy"] == 1
+    assert providers.extract_room_id({"roomInfo": {"uuid": "room-123"}}) == "room-123"

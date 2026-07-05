@@ -4,12 +4,12 @@ services:
       context: .
       args:
         OLCRTC_REF: ${OLCRTC_REF:-master}
-    image: olcrtc-panel:${PANEL_VERSION:-0.1.3}
+    image: olcrtc-panel:${PANEL_VERSION:-0.1.4}
     container_name: olcrtc-panel
     restart: unless-stopped
     network_mode: host
     environment:
-      PANEL_VERSION: ${PANEL_VERSION:-0.1.3}
+      PANEL_VERSION: ${PANEL_VERSION:-0.1.4}
       PANEL_ADMIN_TOKEN: ${PANEL_ADMIN_TOKEN:?set PANEL_ADMIN_TOKEN}
       PANEL_PUBLIC_BASE_URL: ${PANEL_PUBLIC_BASE_URL:-}
       PANEL_PATH: ${PANEL_PATH:-/p-local-dev}
@@ -22,7 +22,7 @@ services:
       PANEL_BACKUP_DIR: /data/backups
       PANEL_STATIC_DIR: /app/static
       OLCRTC_DEFAULT_DNS: ${OLCRTC_DEFAULT_DNS:-8.8.8.8:53}
-      OLCRTC_DEFAULT_JITSI: ${OLCRTC_DEFAULT_JITSI:-https://meet.handyweb.org}
+      OLCRTC_DEFAULT_JITSI: ${OLCRTC_DEFAULT_JITSI:-https://fairmeeting.net}
     volumes:
       - ./data:/data
 
