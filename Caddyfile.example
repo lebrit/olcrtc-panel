@@ -1,9 +1,11 @@
-example.com {
+:8080 {
     encode gzip zstd
 
-    handle_path /panel* {
-        reverse_proxy 127.0.0.1:8080
+    redir /p-change-me /p-change-me/ 308
+
+    handle_path /p-change-me/* {
+        reverse_proxy 127.0.0.1:18080
     }
 
-    redir / /panel/ 302
+    respond "not found" 404
 }

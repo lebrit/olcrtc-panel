@@ -19,6 +19,14 @@ type JitsiProbe = { url: string; ok: boolean; latency_ms: number; status: string
 
 const storedToken = localStorage.getItem("olcrtc-panel-token") || "";
 
+function apiPath(path: string): string {
+  const clean = path.replace(/^\/+/, "");
+  const base = window.location.pathname.endsWith("/")
+    ? window.location.pathname
+    : window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/") + 1);
+  return `${base}${clean}`;
+}
+
 function App() {
   const [token, setToken] = useState(storedToken);
   const [draftToken, setDraftToken] = useState(storedToken);
@@ -42,7 +50,7 @@ function App() {
   const headers = useMemo(() => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }), [token]);
 
   async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(path, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+    const response = await fetch(apiPath(path), { ...init, headers: { ...headers, ...(init.headers || {}) } });
     if (!response.ok) throw new Error((await response.text()) || response.statusText);
     const contentType = response.headers.get("content-type") || "";
     return contentType.includes("application/json") ? ((await response.json()) as T) : ((await response.text()) as T);

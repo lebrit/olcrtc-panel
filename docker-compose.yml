@@ -4,17 +4,17 @@ services:
       context: .
       args:
         OLCRTC_REF: ${OLCRTC_REF:-master}
-    image: olcrtc-panel:${PANEL_VERSION:-0.1.2}
+    image: olcrtc-panel:${PANEL_VERSION:-0.1.3}
     container_name: olcrtc-panel
     restart: unless-stopped
     network_mode: host
     environment:
-      PANEL_VERSION: ${PANEL_VERSION:-0.1.2}
+      PANEL_VERSION: ${PANEL_VERSION:-0.1.3}
       PANEL_ADMIN_TOKEN: ${PANEL_ADMIN_TOKEN:?set PANEL_ADMIN_TOKEN}
       PANEL_PUBLIC_BASE_URL: ${PANEL_PUBLIC_BASE_URL:-}
-      PANEL_PATH: ${PANEL_PATH:-/panel}
-      PANEL_BIND: ${PANEL_BIND:-0.0.0.0}
-      PANEL_PORT: ${PANEL_PORT:-8080}
+      PANEL_PATH: ${PANEL_PATH:-/p-local-dev}
+      PANEL_BIND: ${PANEL_BIND:-127.0.0.1}
+      PANEL_PORT: ${PANEL_PORT:-18080}
       PANEL_DATA_DIR: /data
       PANEL_DB_PATH: /data/panel.db
       PANEL_RUNTIME_DIR: /data/runtime

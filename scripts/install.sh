@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME="olcrtc-panel"
 APP_DIR="/opt/olcrtc-panel"
 REPO_URL="${OLCRTC_PANEL_REPO:-https://github.com/lebrit/olcrtc-panel.git}"
-PANEL_VERSION="0.1.2"
+PANEL_VERSION="0.1.3"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 
@@ -132,7 +132,24 @@ ensure_deps() {
 }
 
 rand_token() {
-  openssl rand -hex 32
+  random_hex 32
+}
+
+random_hex() {
+  local bytes="${1:-8}"
+  if has_cmd openssl; then
+    openssl rand -hex "$bytes"
+    return
+  fi
+  if has_cmd od; then
+    od -An -N"$bytes" -tx1 /dev/urandom | tr -d ' \n'
+    return
+  fi
+  tr -dc 'a-z0-9' </dev/urandom | dd bs="$((bytes * 2))" count=1 2>/dev/null
+}
+
+secret_panel_path() {
+  echo "/p-$(random_hex 10)"
 }
 
 server_ip() {
@@ -143,19 +160,57 @@ read_default() {
   local prompt="$1"
   local default="$2"
   local value
-  read -r -p "$prompt [$default]: " value
+  value="$(read_prompt "$prompt" "$default")"
   echo "${value:-$default}"
+}
+
+read_prompt() {
+  local prompt="$1"
+  local default="${2:-}"
+  local value=""
+  local label
+  if [ -n "$default" ]; then
+    label="$prompt [$default]: "
+  else
+    label="$prompt: "
+  fi
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf '%s' "$label" >/dev/tty
+    IFS= read -r value </dev/tty || value=""
+  elif [ -t 0 ]; then
+    read -r -p "$label" value || value=""
+  else
+    echo "Нет интерактивного терминала, используется значение по умолчанию для: $prompt" >&2
+  fi
+  echo "$value"
+}
+
+read_required() {
+  local prompt="$1"
+  read_prompt "$prompt" ""
 }
 
 normalize_path() {
   local value="$1"
   if [ -z "$value" ]; then
-    echo "/panel"
-    return
+    value="$(secret_panel_path)"
   fi
   value="/${value#/}"
   value="${value%/}"
   echo "$value"
+}
+
+ensure_secret_path() {
+  local value="$1"
+  case "$value" in
+    "/"|"/panel"|"/admin"|"/dashboard"|"/api"|"/assets"|"/sub")
+      echo "Путь '$value' не выглядит секретным. Генерирую новый скрытый путь." >&2
+      secret_panel_path
+      ;;
+    *)
+      echo "$value"
+      ;;
+  esac
 }
 
 port_busy() {
@@ -179,7 +234,7 @@ maybe_stop_web_conflicts() {
   fi
   print_port_diagnostics
   local answer
-  read -r -p "Временно остановить nginx/apache2/httpd/caddy перед запуском Caddy контейнера? [y/N]: " answer
+  answer="$(read_default "Временно остановить nginx/apache2/httpd/caddy перед запуском Caddy контейнера?" "N")"
   case "$answer" in
     y|Y)
       for svc in nginx apache2 httpd caddy; do
@@ -203,15 +258,22 @@ clone_or_update_repo() {
 write_caddyfile() {
   local domain="$1"
   local path="$2"
+  local site
+  site="$domain"
+  if [ -z "$site" ]; then
+    site=":8080"
+  fi
   cat > "$APP_DIR/Caddyfile" <<EOF
-$domain {
+$site {
     encode gzip zstd
 
-    handle_path ${path}* {
-        reverse_proxy 127.0.0.1:8080
+    redir ${path} ${path}/ 308
+
+    handle_path ${path}/* {
+        reverse_proxy 127.0.0.1:18080
     }
 
-    redir / ${path}/ 302
+    respond "not found" 404
 }
 EOF
 }
@@ -224,11 +286,10 @@ write_env() {
   local bind
   if [ -n "$domain" ]; then
     public_url="https://${domain}${path}"
-    bind="127.0.0.1"
   else
-    public_url="http://$(server_ip):8080"
-    bind="0.0.0.0"
+    public_url="http://$(server_ip):8080${path}"
   fi
+  bind="127.0.0.1"
   cat > "$ENV_FILE" <<EOF
 PANEL_VERSION=$PANEL_VERSION
 PANEL_ADMIN_TOKEN=$token
@@ -236,7 +297,7 @@ PANEL_DOMAIN=$domain
 PANEL_PATH=$path
 PANEL_PUBLIC_BASE_URL=$public_url
 PANEL_BIND=$bind
-PANEL_PORT=8080
+PANEL_PORT=18080
 OLCRTC_DEFAULT_DNS=8.8.8.8:53
 OLCRTC_DEFAULT_JITSI=https://meet.handyweb.org
 OLCRTC_REF=master
@@ -252,29 +313,25 @@ compose_up() {
   set +a
   if [ -n "${PANEL_DOMAIN:-}" ]; then
     maybe_stop_web_conflicts
-    docker compose --profile caddy up -d --build --remove-orphans
-  else
-    docker compose up -d --build --remove-orphans panel
   fi
+  docker compose --profile caddy up -d --build --remove-orphans
 }
 
 install_cmd() {
   need_root
+  local domain path token
+  echo "Настройка панели:"
+  domain="$(read_default "Домен панели, пусто для http://IP:8080" "")"
+  path="$(normalize_path "$(read_default "Секретный путь панели" "$(secret_panel_path)")")"
+  path="$(ensure_secret_path "$path")"
+  token="$(rand_token)"
+
   ensure_deps
   clone_or_update_repo
 
   mkdir -p "$APP_DIR/data" "$APP_DIR/data/backups"
 
-  local domain path token
-  domain="$(read_default "Домен панели, пусто для http://IP:8080" "")"
-  path="$(normalize_path "$(read_default "Скрытый путь панели" "/panel")")"
-  token="$(rand_token)"
-
-  if [ -n "$domain" ]; then
-    write_caddyfile "$domain" "$path"
-  else
-    cp "$APP_DIR/Caddyfile.example" "$APP_DIR/Caddyfile"
-  fi
+  write_caddyfile "$domain" "$path"
   write_env "$domain" "$path" "$token"
   ln -sf "$APP_DIR/scripts/install.sh" /usr/local/bin/olcrtc-panel
 
@@ -332,7 +389,7 @@ uninstall_cmd() {
 
 delete_runtime_cmd() {
   need_root
-  read -r -p "Введите DELETE-VOLUMES для удаления runtime/container volumes: " confirm
+  confirm="$(read_required "Введите DELETE-VOLUMES для удаления runtime/container volumes")"
   [ "$confirm" = "DELETE-VOLUMES" ] || exit 1
   cd "$APP_DIR"
   docker compose --profile caddy down -v
@@ -343,7 +400,7 @@ delete_runtime_cmd() {
 
 delete_backups_cmd() {
   need_root
-  read -r -p "Введите DELETE-BACKUPS для удаления локальных backups: " confirm
+  confirm="$(read_required "Введите DELETE-BACKUPS для удаления локальных backups")"
   [ "$confirm" = "DELETE-BACKUPS" ] || exit 1
   rm -rf "$APP_DIR/data/backups"
   mkdir -p "$APP_DIR/data/backups"
@@ -352,7 +409,7 @@ delete_backups_cmd() {
 
 purge_cmd() {
   need_root
-  read -r -p "Введите DELETE для полного удаления панели и данных: " confirm
+  confirm="$(read_required "Введите DELETE для полного удаления панели и данных")"
   [ "$confirm" = "DELETE" ] || exit 1
   if [ -d "$APP_DIR" ]; then
     cd "$APP_DIR"
@@ -372,15 +429,14 @@ config_cmd() {
   local old_token domain path token
   old_token="$(grep '^PANEL_ADMIN_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
   domain="$(read_default "Новый домен, пусто для http://IP:8080" "$(grep '^PANEL_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)")"
-  path="$(normalize_path "$(read_default "Скрытый путь панели" "$(grep '^PANEL_PATH=' "$ENV_FILE" | cut -d= -f2-)")")"
-  read -r -p "Сгенерировать новый admin token? [y/N]: " rotate
+  path="$(normalize_path "$(read_default "Секретный путь панели" "$(grep '^PANEL_PATH=' "$ENV_FILE" | cut -d= -f2-)")")"
+  path="$(ensure_secret_path "$path")"
+  rotate="$(read_default "Сгенерировать новый admin token?" "N")"
   case "$rotate" in
     y|Y) token="$(rand_token)" ;;
     *) token="$old_token" ;;
   esac
-  if [ -n "$domain" ]; then
-    write_caddyfile "$domain" "$path"
-  fi
+  write_caddyfile "$domain" "$path"
   write_env "$domain" "$path" "$token"
   compose_up
   echo "Конфигурация применена."
@@ -395,7 +451,7 @@ delete_menu() {
   echo "  3) Удалить локальные backups"
   echo "  4) Полное удаление"
   echo "  0) Назад"
-  read -r -p "Выбор: " choice
+  choice="$(read_required "Выбор")"
   case "$choice" in
     1) uninstall_cmd ;;
     2) delete_runtime_cmd ;;
@@ -416,7 +472,7 @@ menu_cmd() {
     echo "  6) Backup"
     echo "  7) Удаление"
     echo "  0) Выход"
-    read -r -p "Выбор: " choice
+    choice="$(read_required "Выбор")"
     case "$choice" in
       1) status_cmd ;;
       2) logs_cmd ;;

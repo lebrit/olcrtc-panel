@@ -10,6 +10,8 @@
 curl -fsSL https://raw.githubusercontent.com/lebrit/olcrtc-panel/main/scripts/install.sh | sudo bash -s -- install
 ```
 
+Установщик сразу спросит домен и секретный путь панели. Если путь оставить пустым, будет создан случайный путь вида `/p-...`; `/panel` по умолчанию больше не используется.
+
 После установки меню доступно командой:
 
 ```bash
@@ -20,7 +22,7 @@ olcrtc-panel menu
 
 - FastAPI backend, SQLite state, React/Vite frontend.
 - Docker Compose deployment.
-- Caddy для HTTPS и скрытого пути панели.
+- Caddy для HTTPS и секретного пути панели.
 - Интерактивный installer/menu на русском.
 - Автогенерация Jitsi room URL.
 - Проверка доступных Jitsi серверов из сети сервера.
@@ -106,7 +108,7 @@ bash -n scripts/install.sh
 
 ## Версии
 
-Текущая версия: `0.1.2`.
+Текущая версия: `0.1.3`.
 
 Каждое изменение, которое доходит до сборки, должно обновлять:
 
@@ -125,3 +127,4 @@ bash -n scripts/install.sh
 - Добавить импорт существующих `olcrtc://` и `sub.md` в панель.
 - Добавить кэширование Docker build слоёв в CI, чтобы релизы собирались быстрее.
 - Добавить matrix smoke-test установщика на чистых Debian/Ubuntu/Fedora образах.
+- Добавить UI-проверку, что текущая панель действительно открыта только через секретный путь.
