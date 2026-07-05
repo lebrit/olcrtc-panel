@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Backend deps
+        run: pip install -r backend/requirements-dev.txt
+      - name: Backend tests
+        run: PYTHONPATH=backend pytest backend/tests
+      - name: Compile backend
+        run: python -m compileall -q backend/olcrtc_panel
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+      - name: Shell syntax
+        run: bash -n scripts/install.sh

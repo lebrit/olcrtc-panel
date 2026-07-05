@@ -1,0 +1,42 @@
+services:
+  panel:
+    build:
+      context: .
+      args:
+        OLCRTC_REF: ${OLCRTC_REF:-master}
+    image: olcrtc-panel:${PANEL_VERSION:-0.1.0}
+    container_name: olcrtc-panel
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PANEL_VERSION: ${PANEL_VERSION:-0.1.0}
+      PANEL_ADMIN_TOKEN: ${PANEL_ADMIN_TOKEN:?set PANEL_ADMIN_TOKEN}
+      PANEL_PUBLIC_BASE_URL: ${PANEL_PUBLIC_BASE_URL:-}
+      PANEL_PATH: ${PANEL_PATH:-/panel}
+      PANEL_BIND: ${PANEL_BIND:-0.0.0.0}
+      PANEL_PORT: ${PANEL_PORT:-8080}
+      PANEL_DATA_DIR: /data
+      PANEL_DB_PATH: /data/panel.db
+      PANEL_RUNTIME_DIR: /data/runtime
+      PANEL_LOG_DIR: /data/logs
+      PANEL_BACKUP_DIR: /data/backups
+      PANEL_STATIC_DIR: /app/static
+      OLCRTC_DEFAULT_DNS: ${OLCRTC_DEFAULT_DNS:-8.8.8.8:53}
+      OLCRTC_DEFAULT_JITSI: ${OLCRTC_DEFAULT_JITSI:-https://meet.handyweb.org}
+    volumes:
+      - ./data:/data
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: olcrtc-panel-caddy
+    restart: unless-stopped
+    network_mode: host
+    profiles: ["caddy"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
