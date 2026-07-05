@@ -35,3 +35,5 @@ jobs:
         run: npm run build
       - name: Shell syntax
         run: bash -n scripts/install.sh
+      - name: Docker build
+        run: docker build --build-arg OLCRTC_REF=master -t olcrtc-panel:test .
